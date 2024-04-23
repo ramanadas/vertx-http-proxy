@@ -25,11 +25,14 @@ import io.vertx.core.http.impl.HttpServerRequestInternal;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.net.HostAndPort;
 import io.vertx.core.net.impl.HostAndPortImpl;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.streams.Pipe;
 import io.vertx.httpproxy.Body;
 import io.vertx.httpproxy.ProxyRequest;
 import io.vertx.httpproxy.ProxyResponse;
 
+import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -226,6 +229,151 @@ public class ProxiedRequest implements ProxyRequest {
     Promise<ProxyResponse> promise = context.promise();
     this.request = request;
     sendRequest(promise);
+    return promise.future();
+  }
+
+
+  /**
+   * Transforms the request path by adding a prefix.
+   *
+   * @param prefix The prefix to add to the request path
+   * @return This ProxiedRequest instance for method chaining
+   */
+  public io.vertx.httpproxy.impl.ProxiedRequest addPathPrefix(String prefix) {
+    this.uri = prefix + this.uri;
+    return this;
+  }
+
+  /**
+   * Transforms the request path by removing a prefix.
+   *
+   * @param prefix The prefix to remove from the request path
+   * @return This ProxiedRequest instance for method chaining
+   */
+  public io.vertx.httpproxy.impl.ProxiedRequest removePathPrefix(String prefix) {
+    if (this.uri.startsWith(prefix)) {
+      this.uri = this.uri.substring(prefix.length());
+    }
+    return this;
+  }
+
+  /**
+   * Transforms query parameters into path parameters.
+   *
+   * @return This ProxiedRequest instance for method chaining
+   */
+  public io.vertx.httpproxy.impl.ProxiedRequest transformQueryToPathParams() {
+    // Parse the original URI to extract query parameters
+    URI originalUri = URI.create(this.uri);
+    String originalPath = originalUri.getPath();
+    String query = originalUri.getQuery();
+
+    // If there are query parameters, construct a new URI with them moved to the path
+    if (query != null && !query.isEmpty()) {
+      Map<String, String> queryParams = new HashMap<>();
+      for (String param : query.split("&")) {
+        String[] pair = param.split("=");
+        queryParams.put(pair[0], pair[1]);
+      }
+
+      // Reconstruct the path with query parameters replaced by path parameters
+      StringBuilder newPath = new StringBuilder(originalPath);
+      for (Map.Entry<String, String> entry : queryParams.entrySet()) {
+        newPath.append("/").append(entry.getValue());
+      }
+
+      // Update the uri field with the new path
+      this.uri = newPath.toString();
+    }
+
+    return this;
+  }
+
+
+  /**
+   * Adds a header to the request.
+   *
+   * @param name  The name of the header
+   * @param value The value of the header
+   * @return This ProxiedRequest instance for method chaining
+   */
+  public io.vertx.httpproxy.impl.ProxiedRequest addHeader(String name, String value) {
+    this.headers.add(name, value);
+    return this;
+  }
+
+  /**
+   * Removes a header from the request.
+   *
+   * @param name The name of the header to remove
+   * @return This ProxiedRequest instance for method chaining
+   */
+  public io.vertx.httpproxy.impl.ProxiedRequest removeHeader(String name) {
+    this.headers.remove(name);
+    return this;
+  }
+
+  /**
+   * Modifies the value of a header.
+   *
+   * @param name   The name of the header to modify
+   * @param newVal The new value of the header
+   * @return This ProxiedRequest instance for method chaining
+   */
+  public ProxiedRequest modifyHeader(String name, String newVal) {
+    this.headers.set(name, newVal);
+    return this;
+  }
+
+  /**
+   * Modifies the request body by reading JSON fully and modifying specified fields.
+   *
+   * @param jsonObject A JsonObject containing fields to update and their new values
+   * @return This ProxiedRequest instance for method chaining
+   */
+  public ProxiedRequest setBody(JsonObject jsonObject) {
+//    Buffer newBody = Buffer.buffer(jsonObject.encode());
+//    ModifiedHttpServerRequest mr = new ModifiedHttpServerRequest(proxiedRequest, newBody);
+//    body = Body.body(mr, newBody.length()+body.length());
+//    Buffer modifiedBuffer = Buffer.buffer(jsonObject.encode());
+//    this.body = Body.body(new BufferingReadStream(body.stream(), modifiedBuffer), body.length()+modifiedBuffer.length());
+    body = Body.body(jsonObject.toBuffer());
+    return this;
+  }
+
+  /**
+   * Retrieves the body content as a JSON object.
+   *
+   * @param resultHandler The handler to be called when the operation completes
+   */
+  public void getBodyAsJson(Handler<JsonObject> resultHandler) {
+    if (body != null) {
+      BufferingWriteStream ws = new BufferingWriteStream();
+      body.stream().pipeTo(ws, h->{
+        if(h.succeeded()){
+          resultHandler.handle(ws.content().toJsonObject());
+        }
+      });
+    }
+  }
+
+  public Future<JsonObject> getBodyAsJson() {
+    Promise<JsonObject> promise = Promise.promise();
+
+    if (body != null && body.length()>0) {
+      BufferingWriteStream ws = new BufferingWriteStream();
+
+      body.stream().pipeTo(ws, ar -> {
+        if (ar.succeeded()) {
+          JsonObject jsonObject = ws.content().toJsonObject();
+          promise.complete(jsonObject);
+        } else {
+          promise.fail(ar.cause());
+        }
+      });
+    } else {
+      promise.fail("Body is null");
+    }
     return promise.future();
   }
 }
