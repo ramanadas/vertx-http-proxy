@@ -43,6 +43,28 @@ public interface ProxyRequest {
   }
 
   /**
+   * Create a new {@code ProxyRequest} instance with contextual data, the proxied request will be paused.
+   *
+   * @param proxiedRequest the {@code HttpServerRequest} that is proxied
+   * @param contextData    a map containing contextual data to be associated with the proxy request
+   * @return a reference to this, so the API can be used fluently
+   */
+  static ProxyRequest reverseProxy(HttpServerRequest proxiedRequest, Map<String, Object> contextData) {
+    proxiedRequest.pause();
+    ProxiedRequest proxiedRequestInstance = new ProxiedRequest(proxiedRequest);
+    
+    // Set contextual data in the proxy request
+    if (contextData != null) {
+        for (Map.Entry<String, Object> entry : contextData.entrySet()) {
+            proxiedRequestInstance.setContextData(entry.getKey(), entry.getValue());
+        }
+    }
+    
+    return proxiedRequestInstance;
+  }
+
+
+  /**
    * @return the HTTP version of the proxied request
    */
   HttpVersion version();

@@ -60,6 +60,7 @@ public class ProxiedRequest implements ProxyRequest {
   private final MultiMap headers;
   HttpClientRequest request;
   private final HttpServerRequest proxiedRequest;
+  private final Map<String, Object> contextData = new HashMap<>();
 
   public ProxiedRequest(HttpServerRequest proxiedRequest) {
 
@@ -315,5 +316,14 @@ public class ProxiedRequest implements ProxyRequest {
       promise.fail("Body is null");
     }
     return promise.future();
+  }
+  
+  public void setContextData(String key, Object value) {
+      contextData.put(key, value);
+  }
+  
+  public <T> T getContextData(String key, Class<T> type) {
+      Object o = contextData.get(key);
+      return type.isInstance(o) ? type.cast(o) : null;
   }
 }
