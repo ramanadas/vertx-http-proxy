@@ -323,7 +323,7 @@ public class ProxiedRequest implements ProxyRequest {
   }
   
   public <T> T getContextData(String key, Class<T> type) {
-      Object value = contextData.get(key);
-      return type.cast(value);
+      Object o = contextData.get(key);
+      return type.isInstance(o) ? type.cast(o) : null;
   }
 }
