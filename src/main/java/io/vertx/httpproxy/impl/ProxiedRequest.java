@@ -25,11 +25,14 @@ import io.vertx.core.http.impl.HttpServerRequestInternal;
 import io.vertx.core.impl.ContextInternal;
 import io.vertx.core.net.HostAndPort;
 import io.vertx.core.net.impl.HostAndPortImpl;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.streams.Pipe;
 import io.vertx.httpproxy.Body;
 import io.vertx.httpproxy.ProxyRequest;
 import io.vertx.httpproxy.ProxyResponse;
 
+import java.net.URI;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -226,6 +229,91 @@ public class ProxiedRequest implements ProxyRequest {
     Promise<ProxyResponse> promise = context.promise();
     this.request = request;
     sendRequest(promise);
+    return promise.future();
+  }
+
+  public ProxiedRequest addPathPrefix(String prefix) {
+    this.uri = prefix + this.uri;
+    return this;
+  }
+
+  public ProxiedRequest removePathPrefix(String prefix) {
+    if (this.uri.startsWith(prefix)) {
+      this.uri = this.uri.substring(prefix.length());
+    }
+    return this;
+  }
+
+  public ProxiedRequest transformQueryToPathParams() {
+    URI originalUri = URI.create(this.uri);
+    String originalPath = originalUri.getPath();
+    String query = originalUri.getQuery();
+    if (query != null && !query.isEmpty()) {
+      Map<String, String> queryParams = new HashMap<>();
+      for (String param : query.split("&")) {
+        String[] pair = param.split("=");
+        queryParams.put(pair[0], pair[1]);
+      }
+      StringBuilder newPath = new StringBuilder(originalPath);
+      for (Map.Entry<String, String> entry : queryParams.entrySet()) {
+        newPath.append("/").append(entry.getValue());
+      }
+      this.uri = newPath.toString();
+    }
+    return this;
+  }
+
+  public ProxiedRequest addHeader(String name, String value) {
+    this.headers.add(name, value);
+    return this;
+  }
+
+  public ProxiedRequest removeHeader(String name) {
+    this.headers.remove(name);
+    return this;
+  }
+
+  public ProxiedRequest modifyHeader(String name, String newVal) {
+    this.headers.set(name, newVal);
+    return this;
+  }
+
+  public ProxiedRequest setBody(JsonObject jsonObject) {
+    body = Body.body(jsonObject.toBuffer());
+    return this;
+  }
+
+  public void getBodyAsJson(Handler<JsonObject> resultHandler) {
+    long len = body.length();
+    if (body != null && len >=0) {
+      BufferingWriteStream buffer = new BufferingWriteStream();
+      body.stream().pipeTo(buffer).onComplete( ar->{
+        if(ar.succeeded()){
+          resultHandler.handle(buffer.content().toJsonObject());
+        } else {
+          System.out.println("not implemented");
+        }
+      });
+    }
+  }
+
+  public Future<JsonObject> getBodyAsJson() {
+    Promise<JsonObject> promise = Promise.promise();
+    long len = body.length();
+    if (body != null && len >= 0) {
+      BufferingWriteStream buffer = new BufferingWriteStream();
+
+      body.stream().pipeTo(buffer).onComplete( ar -> {
+        if (ar.succeeded()) {
+          JsonObject jsonObject = buffer.content().toJsonObject();
+          promise.complete(jsonObject);
+        } else {
+          promise.fail(ar.cause());
+        }
+      });
+    } else {
+      promise.fail("Body is null");
+    }
     return promise.future();
   }
 }
